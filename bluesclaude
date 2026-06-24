@@ -203,4 +203,49 @@ export ANTHROPIC_AUTH_TOKEN="$KEY"
 unset ANTHROPIC_API_KEY
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
 
+# --- detect models automatically ---
+MODEL="gpt-5.5" # Default fallback
+HAIKU_MODEL="DeepSeek-V4-Flash" # Default fallback
+
+if command -v curl >/dev/null 2>&1; then
+  response=$(curl -s --max-time 5 \
+    -H "Authorization: Bearer $KEY" \
+    "https://api.bluesminds.com/v1/models" || echo "")
+  
+  if [ -n "$response" ]; then
+    model_ids=$(python -c '
+import sys, json
+try:
+    data = json.loads(sys.argv[1])
+    ids = [m["id"] for m in data.get("data", []) if "id" in m]
+    print(" ".join(ids))
+except:
+    pass
+' "$response" 2>/dev/null || echo "")
+
+    if [ -n "$model_ids" ]; then
+      if echo "$model_ids" | grep -q "gpt-5.5"; then
+        MODEL="gpt-5.5"
+      else
+        MODEL=$(echo "$model_ids" | awk '{print $1}')
+      fi
+      
+      if echo "$model_ids" | grep -q "DeepSeek-V4-Flash"; then
+        HAIKU_MODEL="DeepSeek-V4-Flash"
+      else
+        HAIKU_MODEL=$(echo "$model_ids" | awk '{print $1}')
+      fi
+      say "Automatically detected models from BluesMinds API:"
+      say "  Default model: $MODEL"
+      say "  Fast/Haiku model: $HAIKU_MODEL"
+    fi
+  fi
+fi
+
+export ANTHROPIC_MODEL="$MODEL"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="$MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$HAIKU_MODEL"
+export CLAUDE_CODE_SUBAGENT_MODEL="$HAIKU_MODEL"
+
 exec claude --dangerously-skip-permissions "$@"

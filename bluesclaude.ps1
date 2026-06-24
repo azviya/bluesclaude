@@ -181,5 +181,44 @@ $env:ANTHROPIC_AUTH_TOKEN               = $key
 if (Test-Path env:\ANTHROPIC_API_KEY) { Remove-Item env:\ANTHROPIC_API_KEY }
 $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
 
+# --- detect models automatically ---
+$model = "gpt-5.5" # Default fallback
+$haikuModel = "DeepSeek-V4-Flash" # Default fallback
+try {
+  $headers = @{
+    'Authorization' = "Bearer $key"
+  }
+  $response = Invoke-RestMethod -Uri 'https://api.bluesminds.com/v1/models' -Headers $headers -TimeoutSec 5
+  if ($response -and $response.data) {
+    $modelIds = @()
+    foreach ($m in $response.data) {
+      if ($m.id) { $modelIds += $m.id }
+    }
+    if ($modelIds.Count -gt 0) {
+      if ($modelIds -contains "gpt-5.5") {
+        $model = "gpt-5.5"
+      } else {
+        $model = $modelIds[0]
+      }
+      if ($modelIds -contains "DeepSeek-V4-Flash") {
+        $haikuModel = "DeepSeek-V4-Flash"
+      } else {
+        $haikuModel = $modelIds[0]
+      }
+      Write-Host "Automatically detected models from BluesMinds API:"
+      Write-Host "  Default model: $model"
+      Write-Host "  Fast/Haiku model: $haikuModel"
+    }
+  }
+} catch {
+  Write-Warning "Could not detect models from API automatically, using defaults: $model / $haikuModel"
+}
+
+$env:ANTHROPIC_MODEL               = $model
+$env:ANTHROPIC_DEFAULT_OPUS_MODEL  = $model
+$env:ANTHROPIC_DEFAULT_SONNET_MODEL = $model
+$env:ANTHROPIC_DEFAULT_HAIKU_MODEL = $haikuModel
+$env:CLAUDE_CODE_SUBAGENT_MODEL    = $haikuModel
+
 & claude --dangerously-skip-permissions @args
 exit $LASTEXITCODE
